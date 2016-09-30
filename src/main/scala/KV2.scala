@@ -35,12 +35,22 @@ object KVStore2 {
 
   def program[R :_kvstore2]: Eff[R, Option[String]] =
     for {
-      _ <- put("wild-cats", "hello")
+      _ <- put[R]("wild-cats", "hello")
       _ <- update[R]("wild-cats", _ + "bar")
-      _ <- put("tame-cats", "bye")
+      _ <- put[R]("tame-cats", "bye")
       n <- get[R]("wild-cats")
-      _ <- delete("tame-cats")
+      _ <- delete[R]("tame-cats")
     } yield n
+
+  def program2[R : _kvstore2]: Eff[R, String] = for {
+    _ <- put[R]("a", "a")
+    _ <- put[R]("2", "b")
+  } yield "a"
+
+  def program3[R : _kvstore2]: Eff[R, String] = for {
+    _ <- get[R]("a")
+    _ <- get[R]("2")
+  } yield "a"
 }
 
 object KVStoreInterpreter2 {
@@ -65,7 +75,7 @@ object KVStoreInterpreter2 {
             for {
               _ <- tell(key)
               m <- get[U, Map[String, String]]
-            } yield m(key).asInstanceOf[X]
+            } yield m.get(key)
 
           case Delete2(key) =>
             for {
@@ -75,4 +85,54 @@ object KVStoreInterpreter2 {
         }
     })
   }
+
+  def runKVStoreWriter[R, U, A](effects: Eff[R, A])
+    (implicit m: Member.Aux[KVStore2, R, U],
+      writer:_writerString[U]): Eff[U, A] = {
+
+    translate(effects)(new Translate[KVStore2, U] {
+      def apply[X](kv: KVStore2[X]): Eff[U, X] =
+        kv match {
+          case Put2(key, value) =>
+            for {
+              _ <- tell(key)
+            } yield ()
+
+          case Get2(key) =>
+            for {
+              _ <- tell(key)
+            } yield Option("hello")
+
+          case Delete2(key) =>
+            for {
+              _ <- tell(key)
+            } yield ()
+        }
+    })
+  }
+
+  def runKVStoreState[R, U, A](effects: Eff[R, A])
+    (implicit m: Member.Aux[KVStore2, R, U], state:_stateMap[U]): Eff[U, A] = {
+
+    translate(effects)(new Translate[KVStore2, U] {
+      def apply[X](kv: KVStore2[X]): Eff[U, X] =
+        kv match {
+          case Put2(key, value) =>
+            for {
+              _ <- modify((map: Map[String, String]) => map.updated(key, value))
+            } yield ()
+
+          case Get2(key) =>
+            for {
+              m <- get[U, Map[String, String]]
+            } yield m.get(key)
+
+          case Delete2(key) =>
+            for {
+              u <- modify((map: Map[String, String]) => map - key)
+            } yield ()
+        }
+    })
+  }
+
 }
