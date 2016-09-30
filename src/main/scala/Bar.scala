@@ -33,4 +33,14 @@ object BarInterpreter {
         }
     })
   }
+
+  def runBarSimple[R, U, A](effects: Eff[R, A])
+    (implicit m: Member.Aux[Bar, R, U]): Eff[U, A] = {
+    translate(effects)(new Translate[Bar, U] {
+      def apply[X](bar: Bar[X]): Eff[U, X] =
+        bar match {
+          case BarId(v) => pure(10)
+        }
+    })
+  }
 }
